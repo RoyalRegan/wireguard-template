@@ -1,0 +1,65 @@
+services:
+  unbound:
+    container_name: unbound
+    image: mvance/unbound:1.12.0
+    restart: unless-stopped
+    volumes:
+      - ./unbound:/opt/unbound/etc/unbound/
+    networks:
+      private_network:
+        ipv4_address: 10.2.8.5
+    cap_add:
+      - NET_ADMIN
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:2024.07.0
+    depends_on: [unbound]
+    restart: unless-stopped
+    environment:
+      TZ: "Europe/Moscow"
+      FTLCONF_LOCAL_IPV4: 10.2.8.6
+      PIHOLE_DNS_1: 10.2.8.5
+      PIHOLE_DNS_2: no
+    env_file: .env
+    volumes:
+      - ./pihole/:/etc/pihole/
+      - ./dnsmasq.d/:/etc/dnsmasq.d/
+    networks:
+      private_network:
+        ipv4_address: 10.2.8.6
+    cap_add:
+      - NET_ADMIN
+
+  wg-easy:
+    container_name: wg-easy
+    image: ghcr.io/wg-easy/wg-easy:14
+    depends_on: [pihole]
+    volumes:
+      - ./wg-easy:/etc/wireguard
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821/tcp"
+    restart: unless-stopped
+    environment:
+      PORT: 51821
+      WG_PORT: 51820
+      WG_DEFAULT_DNS: 10.2.8.6
+      WG_DEFAULT_ADDRESS: 10.2.0.x
+      WG_ALLOWED_IPS: 0.0.0.0/0, ::/0
+    env_file: .env
+    networks:
+      private_network:
+        ipv4_address: 10.2.8.7
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+networks:
+  private_network:
+    ipam:
+      config:
+        - subnet: 10.2.8.0/24
